@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<!--
+  Página de captura del code OAuth de Zoho — versión automatizada.
+  FUENTE CANÓNICA: este archivo vive en el repo privado (docs/oauth/index.html);
+  al modificarlo, copiarlo al repo público de GitHub Pages (arca-oauth).
+
+  Flujo: Zoho redirige acá con ?code=&state=<orgId>. La página envía el code
+  al backend automáticamente (POST) y muestra el resultado. El usuario no
+  necesita copiar ni enviar nada manualmente.
+
+  Configuración de deploy: reemplazar BACKEND_URL con la URL de producción.
+-->
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Facturación ARCA — Autorización de Zoho Books</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 640px;
+           margin: 8vh auto; padding: 0 1.5rem; color: #1a1a2e; line-height: 1.5; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 2rem; }
+    h1 { font-size: 1.3rem; }
+    .ok { color: #1a7f37; } .err { color: #b3261e; }
+    .spinner { display: inline-block; width: 1.2em; height: 1.2em;
+           border: 3px solid #ddd; border-top-color: #2456e6;
+           border-radius: 50%; animation: spin .8s linear infinite;
+           vertical-align: middle; margin-right: .5rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .meta { font-size: .85rem; color: #555; margin-top: 1rem; }
+    button { font-size: 1rem; padding: .6rem 1.2rem; border-radius: 8px;
+           border: none; background: #2456e6; color: white; cursor: pointer;
+           margin-top: 1rem; }
+    button:active { background: #173ba3; }
+  </style>
+</head>
+<body>
+  <div class="card" id="contenido">
+    <noscript>Esta página necesita JavaScript para completar la conexión.</noscript>
+  </div>
+  <script>
+    // -- Configuración de deploy (reemplazar con valor de producción) ----------
+    // TODO: definir el endpoint real cuando exista el backend (Cloud Function,
+    // API Gateway, etc.). El endpoint recibe POST JSON {code, state, location,
+    // accounts_server} y canjea el code por un refresh_token internamente.
+    const BACKEND_URL = "https://api.factuarca.app/v1/oauth/connect";
+
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const error = params.get("error");
+    const state = params.get("state");
+    const location_ = params.get("location");
+    const accountsServer = params.get("accounts-server");
+    const el = document.getElementById("contenido");
+
+    function esc(s) { return (s || "").replace(/[<>&"]/g, ""); }
+
+    if (error) {
+      el.innerHTML =
+        '<h1 class="err">La autorización no se completó</h1>' +
+        '<p>Zoho devolvió: <code>' + esc(error) + '</code></p>' +
+        '<p>Si rechazaste el acceso por error, volvé a la pestaña de ' +
+        'Facturación ARCA en Zoho Books y hacé click en «Conectar» de nuevo.</p>';
+
+    } else if (!code) {
+      el.innerHTML =
+        '<h1>Página de autorización</h1>' +
+        '<p>Esta página se abre automáticamente al autorizar el acceso desde ' +
+        'Zoho Books. Si llegaste acá directamente, no hay nada que hacer: ' +
+        'abrí la extensión Facturación ARCA desde Zoho Books.</p>';
+
+    } else {
+      el.innerHTML =
+        '<h1><span class="spinner"></span> Conectando tu cuenta…</h1>' +
+        '<p>Estamos registrando la autorización. No cierres esta pestaña.</p>';
+
+      fetch(BACKEND_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: code,
+          state: state || "",
+          location: location_ || "",
+          accounts_server: accountsServer || "",
+        }),
+      })
+        .then(function (resp) {
+          if (!resp.ok) throw new Error("HTTP " + resp.status);
+          return resp.json();
+        })
+        .then(function () {
+          el.innerHTML =
+            '<h1 class="ok">Cuenta conectada</h1>' +
+            '<p>La autorización se completó correctamente. Ya podés cerrar ' +
+            'esta pestaña y volver a Zoho Books.</p>' +
+            '<p class="meta">El servicio de facturación va a empezar a ' +
+            'procesar tus facturas marcadas con «Factura por Afip» ' +
+            'automáticamente.</p>';
+        })
+        .catch(function (err) {
+          el.innerHTML =
+            '<h1 class="err">No se pudo completar la conexión</h1>' +
+            '<p>Ocurrió un error al registrar la autorización: ' +
+            '<code>' + esc(err.message) + '</code></p>' +
+            '<p>Podés intentar de nuevo desde la pestaña de Facturación ARCA ' +
+            'en Zoho Books (botón «Conectar»). Si el problema persiste, ' +
+            'contactá a soporte.</p>' +
+            '<button id="reintentar">Reintentar</button>';
+          var btn = document.getElementById("reintentar");
+          if (btn) btn.addEventListener("click", function () { window.location.reload(); });
+        });
+    }
+  </script>
+</body>
+</html>
