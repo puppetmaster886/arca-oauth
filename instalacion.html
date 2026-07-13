@@ -1117,6 +1117,19 @@
               <span class="field-error" id="razon-error" role="alert">Este campo es obligatorio</span>
             </div>
 
+            <div class="wt-field wt-field--full" id="field-domicilio">
+              <label for="input-domicilio">Domicilio fiscal</label>
+              <input
+                type="text"
+                id="input-domicilio"
+                name="domicilio"
+                placeholder="AV RIVADAVIA 1234, CIUDAD AUTONOMA BUENOS AIRES"
+                autocomplete="street-address"
+                aria-describedby="domicilio-hint"
+              >
+              <span class="field-hint" id="domicilio-hint">Se completa desde el padrón — podés editarlo</span>
+            </div>
+
             <div class="wt-field" id="field-civa">
               <label for="input-civa">Condición IVA</label>
               <div class="wt-form__select-wrap">
@@ -1240,7 +1253,7 @@ const MOCKS = {
   oauth: {
     registered: true,
     oauth: { connected: true },
-    tenant: { tenant_id: "t-mock", cuit: null, punto_venta: null, razon_social: null, condicion_iva: null, onboarding_status: "pending", emission_mode: "auto" },
+    tenant: { tenant_id: "t-mock", cuit: null, punto_venta: null, razon_social: null, condicion_iva: null, domicilio: null, onboarding_status: "pending", emission_mode: "auto" },
     delegation: null,
     ready_to_invoice: false,
     blocking_code: "delegation_missing",
@@ -1248,7 +1261,7 @@ const MOCKS = {
   verifying: {
     registered: true,
     oauth: { connected: true },
-    tenant: { tenant_id: "t-mock", cuit: "20326700186", punto_venta: 1, razon_social: "GARCIA FEDERICO RAUL", condicion_iva: "Monotributo", onboarding_status: "pending", emission_mode: "auto" },
+    tenant: { tenant_id: "t-mock", cuit: "20326700186", punto_venta: 1, razon_social: "GARCIA FEDERICO RAUL", condicion_iva: "Monotributo", domicilio: "AV RIVADAVIA 1234, CIUDAD AUTONOMA BUENOS AIRES", onboarding_status: "pending", emission_mode: "auto" },
     delegation: { accept_status: "verifying", accept_attempts: 3, accepted_at: null, last_error: null },
     ready_to_invoice: false,
     blocking_code: "delegation_pending",
@@ -1256,7 +1269,7 @@ const MOCKS = {
   active: {
     registered: true,
     oauth: { connected: true },
-    tenant: { tenant_id: "t-mock", cuit: "20326700186", punto_venta: 1, razon_social: "GARCIA FEDERICO RAUL", condicion_iva: "Monotributo", onboarding_status: "active", emission_mode: "manual" },
+    tenant: { tenant_id: "t-mock", cuit: "20326700186", punto_venta: 1, razon_social: "GARCIA FEDERICO RAUL", condicion_iva: "Monotributo", domicilio: "AV RIVADAVIA 1234, CIUDAD AUTONOMA BUENOS AIRES", onboarding_status: "active", emission_mode: "manual" },
     delegation: { accept_status: "accepted", accept_attempts: 2, accepted_at: "2026-07-09T14:30:00Z", last_error: null },
     ready_to_invoice: true,
     blocking_code: null,
@@ -1264,7 +1277,7 @@ const MOCKS = {
   failed: {
     registered: true,
     oauth: { connected: true },
-    tenant: { tenant_id: "t-mock", cuit: "20326700186", punto_venta: 1, razon_social: "GARCIA FEDERICO RAUL", condicion_iva: "Monotributo", onboarding_status: "pending", emission_mode: "auto" },
+    tenant: { tenant_id: "t-mock", cuit: "20326700186", punto_venta: 1, razon_social: "GARCIA FEDERICO RAUL", condicion_iva: "Monotributo", domicilio: "AV RIVADAVIA 1234, CIUDAD AUTONOMA BUENOS AIRES", onboarding_status: "pending", emission_mode: "auto" },
     delegation: { accept_status: "failed", accept_attempts: 5, accepted_at: null, last_error: "El servicio WSFE respondió con el código de error 10016: CUIT no encontrado en el padrón de ARCA." },
     ready_to_invoice: false,
     blocking_code: "delegation_failed",
@@ -1661,11 +1674,13 @@ function renderStep4(data) {
     const cuitEl  = document.getElementById("input-cuit");
     const razonEl = document.getElementById("input-razon");
     const civaEl  = document.getElementById("input-civa");
+    const domEl   = document.getElementById("input-domicilio");
     const pvEl    = document.getElementById("input-pv");
 
     if (!cuitEl._userEdited  && t.cuit)          cuitEl.value  = t.cuit;
     if (!razonEl._userEdited && t.razon_social)   razonEl.value = t.razon_social;
     if (!civaEl._userEdited  && t.condicion_iva)  civaEl.value  = t.condicion_iva;
+    if (!domEl._userEdited    && t.domicilio)      domEl.value   = t.domicilio;
     if (!pvEl._userEdited    && t.punto_venta)     pvEl.value    = t.punto_venta;
 
     if (!emissionModeUserEdited && t.emission_mode) {
@@ -1694,14 +1709,27 @@ async function handleCuitBlur(e) {
   if (!/^\d{11}$/.test(cuit)) return;
 
   const hint = document.getElementById("padron-hint");
+
+  // Validate the check digit locally before spending a padrón request.
+  const dv = validarCuitLocal(cuit);
+  if (!dv.valid) {
+    hint.textContent = dv.error;
+    hint.className   = "wt-padron-hint wt-padron-hint--error";
+    return;
+  }
+
   hint.textContent = "Consultando padrón…";
   hint.className   = "wt-padron-hint wt-padron-hint--loading";
 
   if (mockKey) {
     // Mock padron response
     setTimeout(() => {
-      document.getElementById("input-razon").value  = "GARCIA FEDERICO RAUL";
-      document.getElementById("input-civa").value   = "Monotributo";
+      const razonEl = document.getElementById("input-razon");
+      const civaEl  = document.getElementById("input-civa");
+      const domEl   = document.getElementById("input-domicilio");
+      if (!razonEl._userEdited) razonEl.value = "GARCIA FEDERICO RAUL";
+      if (!civaEl._userEdited)  civaEl.value  = "Monotributo";
+      if (!domEl._userEdited)   domEl.value   = "AV RIVADAVIA 1234, CIUDAD AUTONOMA BUENOS AIRES";
       hint.textContent = "Datos completados desde el padrón ARCA";
       hint.className   = "wt-padron-hint wt-padron-hint--loading";
       setTimeout(() => { hint.textContent = ""; hint.className = "wt-padron-hint"; }, 3000);
@@ -1732,9 +1760,13 @@ async function handleCuitBlur(e) {
 
     const razonEl = document.getElementById("input-razon");
     const civaEl  = document.getElementById("input-civa");
+    const domEl   = document.getElementById("input-domicilio");
 
     if (!razonEl._userEdited && padron.nombre) {
       razonEl.value = padron.nombre;
+    }
+    if (!domEl._userEdited && padron.domicilio) {
+      domEl.value = padron.domicilio;
     }
     if (!civaEl._userEdited) {
       if (padron.monotributo_categoria !== null && padron.monotributo_categoria !== undefined) {
@@ -1769,18 +1801,19 @@ async function handleFormSubmit(e) {
   const cuitEl  = document.getElementById("input-cuit");
   const razonEl = document.getElementById("input-razon");
   const civaEl  = document.getElementById("input-civa");
+  const domEl   = document.getElementById("input-domicilio");
   const pvEl    = document.getElementById("input-pv");
   const saveBtn = document.getElementById("btn-save");
   const savedEl = document.getElementById("form-saved");
 
   // Mark all as user-edited
-  cuitEl._userEdited = razonEl._userEdited = civaEl._userEdited = pvEl._userEdited = true;
+  cuitEl._userEdited = razonEl._userEdited = civaEl._userEdited = domEl._userEdited = pvEl._userEdited = true;
 
   let valid = true;
 
-  // Validate CUIT
+  // Validate CUIT (11 digits + check digit)
   const cuit = cuitEl.value.trim();
-  if (!/^\d{11}$/.test(cuit)) {
+  if (!/^\d{11}$/.test(cuit) || !validarCuitLocal(cuit).valid) {
     document.getElementById("field-cuit").classList.add("field--has-error");
     valid = false;
   } else {
@@ -1821,11 +1854,14 @@ async function handleFormSubmit(e) {
   const modeEl = document.querySelector('input[name="emission_mode"]:checked');
   const emissionMode = modeEl ? modeEl.value : "auto";
 
+  const domicilio = domEl.value.trim();
+
   const body = {
     zoho_org_id:   orgId,
     cuit:          cuit,
     razon_social:  razonEl.value.trim(),
     condicion_iva: civaEl.value,
+    domicilio:     domicilio,
     punto_venta:   pv,
     emission_mode: emissionMode,
   };
@@ -1835,12 +1871,13 @@ async function handleFormSubmit(e) {
     await new Promise(r => setTimeout(r, 500));
     // Update mock data
     if (currentData && !currentData.tenant) {
-      currentData.tenant = { tenant_id: "t-mock", cuit, punto_venta: pv, razon_social: razonEl.value.trim(), condicion_iva: civaEl.value, onboarding_status: "pending", emission_mode: emissionMode };
+      currentData.tenant = { tenant_id: "t-mock", cuit, punto_venta: pv, razon_social: razonEl.value.trim(), condicion_iva: civaEl.value, domicilio, onboarding_status: "pending", emission_mode: emissionMode };
     } else if (currentData && currentData.tenant) {
       currentData.tenant.cuit = cuit;
       currentData.tenant.punto_venta = pv;
       currentData.tenant.razon_social = razonEl.value.trim();
       currentData.tenant.condicion_iva = civaEl.value;
+      currentData.tenant.domicilio = domicilio;
       currentData.tenant.emission_mode = emissionMode;
     }
     saveBtn.disabled = false;
@@ -1885,6 +1922,30 @@ function hideErrorBanner() {
 }
 
 // -- Util ---------------------------------------------------------------------
+
+// Validación local de CUIT (dígito verificador módulo 11). Port de
+// landing/src/scripts/tools/cuit.ts — mantener en sync. Evita gastar una
+// consulta al padrón (y contra el rate limit) con un CUIT mal tipeado.
+const _CUIT_PREFIJOS = new Set(["20","23","24","25","26","27","30","33","34"]);
+const _CUIT_PESOS = [5,4,3,2,7,6,5,4,3,2];
+function validarCuitLocal(input) {
+  const digits = String(input || "").replace(/[^\d]/g, "");
+  if (digits.length !== 11) {
+    return { valid: false, error: `Un CUIT tiene 11 dígitos — ingresaste ${digits.length}.` };
+  }
+  const prefijo = digits.slice(0, 2);
+  if (!_CUIT_PREFIJOS.has(prefijo)) {
+    return { valid: false, error: `El prefijo ${prefijo} no corresponde a ningún CUIT válido.` };
+  }
+  const suma = _CUIT_PESOS.reduce((acc, peso, i) => acc + peso * Number(digits[i]), 0);
+  const resto = suma % 11;
+  const dvEsperado = resto === 0 ? 0 : (resto === 1 ? null : 11 - resto);
+  if (dvEsperado === null || dvEsperado !== Number(digits[10])) {
+    return { valid: false, error: "El dígito verificador del CUIT no coincide." };
+  }
+  return { valid: true };
+}
+
 function escapeHtml(str) {
   if (!str) return "";
   return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
